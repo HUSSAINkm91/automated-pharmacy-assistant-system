@@ -1,0 +1,113 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
+#include <ArduinoJson.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// WiFi credentials
+const char* ssid = "";
+const char* password = "";
+
+// rest api
+const char* apiEndpoint = "api_url";
+
+StaticJsonDocument<512> prescriptionData;
+
+// Task handles for dual core operation
+TaskHandle_t Task1;  
+TaskHandle_t Task2;  
+
+void processTypedValue();
+void svo1(int dly);
+void svo2(int dly);
+void svo3(int dly);
+void svo4(int dly);
+void handlePrescription();
+void dataProcessingTask(void * parameter);
+boolean ir(int irSensorPin);
+void display(String msg1,String msg2);
+
+const int motorPin1 =25;
+const int motorPin2 =26;
+const int motorPin3 =27;
+const int motorPin4 =14;
+const int convmotorPin =13;
+const int buzzerPin = 2;
+//const int irSensorPin = 2;
+
+
+// Queue for passing data between cores
+QueueHandle_t prescriptionQueue;
+
+// Struct for prescription data
+struct PrescriptionData {
+  char uid[20];
+  char type[10];
+  int Metformin;
+  int Glimepiride;
+  int Vildagliptin;
+  int Pioglitazone;
+  char doctor[30];
+  char date[30]; 
+  bool fulfilled;
+};
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(motorPin1, OUTPUT);
+  pinMode(motorPin2, OUTPUT);
+  pinMode(motorPin3, OUTPUT);
+  pinMode(motorPin4, OUTPUT);
+  pinMode(BUILTIN_LED, OUTPUT);
+  pinMode(convmotorPin, OUTPUT);
+  pinMode(buzzerPin, OUTPUT);
+  pinMode(34, INPUT);
+  pinMode(35, INPUT);
+  pinMode(36, INPUT);
+  pinMode(39, INPUT);
+  
+  lcd.init();
+  // Turn on the backlight
+  lcd.backlight();
+  lcd.setCursor(0, 0);
+  lcd.print("DISPENSER-ON");
+
+  // Create queue for inter-core communication
+  prescriptionQueue = xQueueCreate(5, sizeof(PrescriptionData));
+  if (prescriptionQueue == NULL) {
+    Serial.println("Error creating the queue");
+    return;
+  }
+  
+  // Core 0  - backend communication with api 
+  xTaskCreatePinnedToCore(
+    handlePrescription,    
+    "handlePrescription",  
+    8192,             
+    NULL,             
+    1,                
+    &Task1,           
+    0                 
+  );
+  
+  // Core 1 handling DataProcessingTask-harware controlling
+  xTaskCreatePinnedToCore(
+    dataProcessingTask,    
+    "DataProcessingTask",  
+    8192,                  
+    NULL,                  
+    1,                     
+    &Task2,                
+    1                      
+  );
+}
+
+void loop() {
+
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+}
