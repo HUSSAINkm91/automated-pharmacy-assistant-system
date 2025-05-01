@@ -111,3 +111,277 @@ void loop() {
   vTaskDelay(1000 / portTICK_PERIOD_MS);
 
 }
+
+//task of core 1
+void dataProcessingTask(void * parameter) {
+  PrescriptionData receivedData;
+  
+  Serial.println("Data processing task started on Core 1");
+  
+  
+  for(;;) {
+    
+    if (xQueueReceive(prescriptionQueue, &receivedData, portMAX_DELAY) == pdPASS) {
+      // monitoring que
+      Serial.println("------ Processing Prescription on Core 1 ------");
+      Serial.println("Patient ID: " + String(receivedData.uid));
+      Serial.println("Type: " + String(receivedData.type));
+      Serial.println("Metformin: " + String(receivedData.Metformin));
+      Serial.println("Insulin: " + String(receivedData.Glimepiride));
+      Serial.println("Medication3: " + String(receivedData.Vildagliptin));
+      Serial.println("Medication4: " + String(receivedData.Pioglitazone));
+      Serial.println("Doctor: " + String(receivedData.doctor));
+      Serial.println("Date: " + String(receivedData.date));
+      Serial.println("Fulfilled: " + String(receivedData.fulfilled ? "Yes" : "No"));
+      Serial.println("-------------------------------------------");
+      
+      lcd.clear();
+      display(String(receivedData.uid),"processing");//displayind patient id
+      
+      int quantity1=receivedData.Metformin;
+      int quantity2=receivedData.Glimepiride;
+      int quantity3=receivedData.Vildagliptin;
+      int quantity4=receivedData.Pioglitazone;
+
+      beep1000(1);
+      digitalWrite(convmotorPin, HIGH);
+      svo1(String(receivedData.uid),quantity1*1000);
+      svo2(String(receivedData.uid),quantity2*1000);
+      svo3(String(receivedData.uid),quantity3*1000);
+      svo4(String(receivedData.uid),quantity4*1000);
+      digitalWrite(convmotorPin, LOW);
+      lcd.clear();
+      display(String(receivedData.uid),"dispensed");
+      beep1000(1);
+      //monitoring
+      Serial.println(quantity1);
+      Serial.println(quantity2);
+      Serial.println(quantity3);
+      Serial.println(quantity4);
+    
+
+    }
+  }
+}
+
+//task of core 0
+void handlePrescription(void * parameter) {
+
+  
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to Wi-Fi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected!");
+
+
+
+  while (1) {
+ 
+
+    if (WiFi.status() == WL_CONNECTED) {
+    
+      WiFiClientSecure client;
+      client.setInsecure(); 
+      HTTPClient http;
+    
+      String url = String(apiEndpoint);
+      http.begin(client, url);
+    
+      int httpCode = http.POST("{}");
+      Serial.println("HTTP Response code: " + String(httpCode));
+      Serial.println("Requesting: " + url);
+
+      if (httpCode == 200) {
+        String payload = http.getString();
+        Serial.println("Received payload: " + payload);
+        
+        StaticJsonDocument<1024> doc; 
+        
+        DeserializationError error = deserializeJson(doc, payload);
+    
+        if (!error) {
+          JsonArray dataArray = doc["prescriptions"].as<JsonArray>(); 
+
+          if (dataArray.size() > 0) {
+           JsonObject prescriptionData = dataArray[0]; 
+           PrescriptionData data;
+    
+           
+           strlcpy(data.uid, prescriptionData["uid"] | "", sizeof(data.uid));
+           strlcpy(data.type, prescriptionData["type"] | "diabetes", sizeof(data.type));
+           data.Metformin = prescriptionData["Metformin"] | 0;
+           data.Glimepiride = prescriptionData["Glimepiride"] | 0;
+           data.Vildagliptin = prescriptionData["Vildagliptin"] | 0;
+           data.Pioglitazone = prescriptionData["Pioglitazone"] | 0;
+           strlcpy(data.doctor, prescriptionData["doctor"] | "", sizeof(data.doctor));
+           strlcpy(data.date, prescriptionData["date"] | "", sizeof(data.date));
+           data.fulfilled = prescriptionData["fulfilled"] | false;
+    
+           // Send data to processing queue
+           if (xQueueSend(prescriptionQueue, &data, portMAX_DELAY) != pdPASS) {
+              Serial.println("Failed to send data to queue");
+              return;
+            }
+    
+          } else {
+            Serial.println("Error: JSON array is empty!");
+          }
+        } else {
+          Serial.println("JSON parsing failed! Error: " + String(error.c_str()));
+        }
+      } else {
+          Serial.println("Error on HTTP request");
+      }
+      http.end();
+   
+    } else {
+      Serial.println("WiFi disconnected!");
+    }
+ 
+  }
+
+}
+
+
+//for displaying into the lcd
+void display(String msg1,String msg2){
+  lcd.setCursor(0, 0);
+  lcd.print(msg1);
+
+  lcd.setCursor(0, 1); 
+  lcd.print(msg2);
+}
+
+//for this functions for buzzering
+
+
+void beep500(int numBeeps) {
+  Serial.println("beep500");
+  for (int i = 0; i < numBeeps; i++) {
+    tone(buzzerPin, 1000); 
+    vTaskDelay(150 / portTICK_PERIOD_MS);
+    noTone(buzzerPin);
+    vTaskDelay(150 / portTICK_PERIOD_MS); 
+  }
+}
+ 
+void beep1000(int numBeeps) {
+  Serial.println("beep1000");
+  for (int i = 0; i < numBeeps; i++) {
+    tone(buzzerPin, 1000); 
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    noTone(buzzerPin);
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+  }
+}
+
+void longbeep(int numBeeps) {
+  Serial.println("2000beep");
+  for (int i = 0; i < numBeeps; i++) {
+    tone(buzzerPin, 1000); 
+    vTaskDelay(2000 / portTICK_PERIOD_MS);
+    noTone(buzzerPin);
+    vTaskDelay(2000 / portTICK_PERIOD_MS);
+  }
+}
+
+//checking presence of medicine
+boolean ir(int irSensorPin) {
+ int sensorValue = digitalRead(irSensorPin); 
+  Serial.print("IR Sensor Value: ");
+  Serial.println(sensorValue);  
+  return sensorValue;
+}
+
+//functions for dispenser control
+
+void svo1(String id,int dly) {
+  Serial.println("pin1");
+  Serial.println(dly);
+  if (ir(34)==1){
+  digitalWrite(motorPin1, HIGH);
+  lcd.clear();
+  display(id,"metaformin: "+dly);
+  digitalWrite(motorPin2, LOW);
+  digitalWrite(motorPin3, LOW);
+  digitalWrite(motorPin4, LOW);
+  digitalWrite(BUILTIN_LED, HIGH);
+
+  vTaskDelay(dly / portTICK_PERIOD_MS);
+  digitalWrite(BUILTIN_LED, LOW);
+
+  digitalWrite(motorPin1, LOW);
+  }else {
+  Serial.println("med1 low");
+  lcd.clear();
+  display(id+" failed","med3: empty");
+  longbeep(2);
+  }
+
+  
+}
+void svo2(String id,int dly) {
+  Serial.println("pin2");
+  Serial.println(dly);
+  if (ir(35)==1){
+  digitalWrite(motorPin1, LOW);
+  digitalWrite(motorPin2, HIGH);
+  lcd.clear();
+  display(id,"insulin:"+dly);
+  digitalWrite(motorPin3, LOW);
+  digitalWrite(motorPin4, LOW);
+  vTaskDelay(dly / portTICK_PERIOD_MS);
+
+  digitalWrite(motorPin2, LOW);
+   }else {
+  Serial.println("insulin low");
+  lcd.clear();
+  display(id+" failed","med3: empty");
+  longbeep(2);
+  }
+}
+void svo3(String id,int dly) {
+  
+  Serial.println("pin3");
+  Serial.println(dly);
+  if (ir(36)==1){
+  digitalWrite(motorPin1, LOW);
+  digitalWrite(motorPin2, LOW);
+  digitalWrite(motorPin3, HIGH);
+  lcd.clear();
+  display(id,"medication3:"+dly);
+  digitalWrite(motorPin4, LOW);
+  vTaskDelay(dly / portTICK_PERIOD_MS);
+  digitalWrite(motorPin3, LOW);
+   }else {
+  Serial.println("med3 low");
+  lcd.clear();
+  display(id+" failed","med3: empty");
+  longbeep(2);
+  }
+}
+
+  
+void svo4(String id,int dly) {
+  Serial.println("pin4");
+  Serial.println(dly);
+  if (ir(39)==1){
+  digitalWrite(motorPin1, LOW);
+  digitalWrite(motorPin2, LOW);
+  digitalWrite(motorPin3, LOW);
+  digitalWrite(motorPin4, HIGH);
+  lcd.clear();
+  display(id,"medication4:"+dly);
+  vTaskDelay(dly / portTICK_PERIOD_MS);
+  digitalWrite(motorPin4, LOW);
+  }else {
+  Serial.println("med3 low");
+  lcd.clear();
+  display(id+" failed","med4: empty");
+  longbeep(2);
+  }
+}
+
