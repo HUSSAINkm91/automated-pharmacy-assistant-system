@@ -1,1 +1,7 @@
 # automated-pharmacy-assistant-system
+Long queues in pharmacy settings, especially in government healthcare centers like Primary Health Centers (PHCs), pose a significant challenge for elderly patients with Non Communicable Diseases (NCDs) who require regular medication refills. To address this issue, we propose an Automated Pharmacy Assistant System designed to streamline the dispensing process, with a dedicated mechanism for automating repeat prescriptions for such patients.
+This system integrates an automated medicine dispensing unit with a secure software platform, allowing pre-registered elderly patients to retrieve their prescribed medications seamlessly without waiting in long lines. The software processes prescriptions
+efficiently, ensuring refills are prepared in advance based on patient history, thus minimizing delays and improving accessibility.
+Developed based on surveys conducted in PHCs, our solution also enables efficient patient record management, medication tracking, and inventory monitoring, while providing timely alerts for expiring medicines and upcoming refills. By automating these
+essential processes, the system optimizes pharmacy workflow and reduces administrative workload, allowing pharmacy staff to manage resources more effectively. Ultimately, this project aims to improve medication accessibility for elderly patients with
+NCDs, ensuring a more efficient and patient-friendly pharmacy experience in government healthcare facilities.
